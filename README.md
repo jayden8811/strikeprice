@@ -10,8 +10,9 @@ The project has no dependencies.
 ## Run
 
 ```bash
-TRADIER_TOKEN=your_token npm start   # real-time data → http://localhost:3000
-npm start                            # free fallback (options ~15 min delayed)
+ALPACA_KEY_ID=... ALPACA_SECRET_KEY=... npm start   # free real-time → http://localhost:3000
+TRADIER_TOKEN=your_token npm start                  # real-time via a Tradier brokerage account
+npm start                                           # free fallback (options ~15 min delayed)
 npm run demo                         # synthetic data, works offline / after hours
 npm test
 ```
@@ -20,7 +21,9 @@ You can also add `?demo=1` to the URL to use demo data for a single page.
 
 ## Data sources
 
-**Real-time (recommended):** set `TRADIER_TOKEN` to a Tradier brokerage API token. Real-time market data is included with a Tradier brokerage account at no extra cost; check Tradier's current terms. The app then gets real-time quotes, 1-minute bars, daily history, VIX/VIX3M and full option chains with Greeks (IV, delta, gamma) from Tradier. A free developer sandbox token also works with `TRADIER_SANDBOX=1`, but its data is delayed.
+**Free real-time (Alpaca):** sign up for an Alpaca paper-trading account (email only), generate an API key, and set `ALPACA_KEY_ID` and `ALPACA_SECRET_KEY`. You get real-time stock prices from the IEX exchange and Alpaca's real-time *indicative* option quotes with IV and Greeks. Indicative prices approximate the official OPRA feed and can differ from it. Daily history uses the full consolidated tape, and open interest comes from Alpaca's contracts endpoint (updated daily). VIX/VIX3M still come from Yahoo. With a paid Alpaca plan, set `ALPACA_FEED=sip` and `ALPACA_OPTIONS_FEED=opra` for the full feeds. Network hosts used: `data.alpaca.markets`, `paper-api.alpaca.markets`.
+
+**Real-time via Tradier:** set `TRADIER_TOKEN` to a Tradier brokerage API token. Real-time market data is included with a Tradier brokerage account at no extra cost; check Tradier's current terms. The app then gets real-time quotes, 1-minute bars, daily history, VIX/VIX3M and full option chains with Greeks (IV, delta, gamma) from Tradier. A free developer sandbox token also works with `TRADIER_SANDBOX=1`, but its data is delayed.
 
 **Free fallback (no token):**
 
@@ -85,7 +88,7 @@ Once any print arrives, flow becomes the heaviest-weighted directional signal.
 
 ```
 server.js               HTTP server + API
-src/data/               tradier.js, yahoo.js, cboe.js, flowStore.js, demo.js, load.js
+src/data/               alpaca.js, tradier.js, yahoo.js, cboe.js, flowStore.js, demo.js, load.js
 src/engine/             analyze.js (decision), levels, volatility, gex, flow, math, time
 public/                 homepage (index.html, styles.css, app.js)
 test/                   node:test suite

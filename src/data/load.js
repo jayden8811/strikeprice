@@ -1,6 +1,7 @@
 import * as yahoo from './yahoo.js';
 import * as cboe from './cboe.js';
 import * as tradier from './tradier.js';
+import * as alpaca from './alpaca.js';
 import { demoData } from './demo.js';
 import { getPrints } from './flowStore.js';
 
@@ -15,7 +16,7 @@ async function cached(key, ttl, fn) {
   return value;
 }
 
-// Real-time Tradier when a token is set; otherwise the free Yahoo + Cboe (delayed chain) sources.
+// Real-time Tradier or Alpaca when keys are set; otherwise the free Yahoo + Cboe (delayed chain) sources.
 const free = {
   name: { prices: 'Yahoo Finance', options: 'Cboe (15-min delayed)' },
   daily: async (s) => (await yahoo.chart(s, '1y', '1d')).bars,
@@ -39,8 +40,21 @@ const realtime = {
   index: async (s) => (await tradier.quotes([s]))[s] ?? free.index(s),
 };
 
+// Alpaca has no index data, so VIX/VIX3M still come from Yahoo.
+const alpacaProvider = {
+  get name() {
+    return { prices: alpaca.label(), options: alpaca.optionsLabel() };
+  },
+  daily: (s) => alpaca.daily(s),
+  intraday: (s) => alpaca.intraday(s),
+  chain: (s) => alpaca.optionChain(s),
+  index: (s) => free.index(s),
+};
+
 export function provider() {
-  return tradier.enabled() ? realtime : free;
+  if (tradier.enabled()) return realtime;
+  if (alpaca.enabled()) return alpacaProvider;
+  return free;
 }
 
 // Gathers everything the engine needs for one ticker.
@@ -51,7 +65,7 @@ export async function loadTicker(ticker, { demo = false } = {}) {
   const [daily, intraday, chain, spyDaily, spyIntraday, vix, vix3m, earnings] = await Promise.allSettled([
     cached(`d:${ticker}`, 300_000, () => p.daily(ticker)),
     cached(`i:${ticker}`, TTL_MS, () => p.intraday(ticker)),
-    cached(`c:${ticker}`, p === realtime ? 15_000 : 30_000, () => p.chain(ticker)),
+    cached(`c:${ticker}`, p !== free ? 15_000 : 30_000, () => p.chain(ticker)),
     cached('d:SPY', 300_000, () => p.daily('SPY')),
     cached('i:SPY', TTL_MS, () => p.intraday('SPY')),
     cached('q:VIX', TTL_MS, () => p.index('VIX')),

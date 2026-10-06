@@ -1,5 +1,6 @@
 // Free Yahoo Finance endpoints: price bars and quotes (stocks and indexes like ^VIX).
-const UA = { 'User-Agent': 'Mozilla/5.0 (strikeprice)' };
+// Yahoo rate-limits unfamiliar user agents on the crumb endpoint.
+const UA = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36' };
 
 async function getJson(url, headers = {}) {
   const res = await fetch(url, { headers: { ...UA, ...headers } });

@@ -14,7 +14,7 @@ export function parseOccSymbol(sym) {
 
 export async function optionChain(ticker) {
   const sym = INDEXES.has(ticker) ? `_${ticker}` : ticker;
-  const res = await fetch(`https://cdn.cboe.com/api/global/delayed_quotes/options/${sym}.json`, {
+  const res = await fetch(`https://cdn-api.cboe.com/api/global/delayed_quotes/options/${sym}.json`, {
     headers: { 'User-Agent': 'Mozilla/5.0 (strikeprice)' },
   });
   if (!res.ok) throw new Error(`Cboe ${res.status} for ${ticker}`);
