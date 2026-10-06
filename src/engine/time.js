@@ -38,3 +38,22 @@ export function daysToExpiry(expiry, now = new Date()) {
   const close = new Date(`${expiry}T20:00:00Z`); // 4pm EDT; 1h off in EST is negligible here
   return (close - now) / 86_400_000;
 }
+
+// The ET calendar date n trading days after `now` (weekends skipped, holidays not modeled).
+export function addTradingDays(now, n) {
+  const d = new Date(`${etDate(now)}T12:00:00Z`);
+  let left = n;
+  while (left > 0) {
+    d.setUTCDate(d.getUTCDate() + 1);
+    const wd = d.getUTCDay();
+    if (wd !== 0 && wd !== 6) left--;
+  }
+  return d.toISOString().slice(0, 10);
+}
+
+// Full trading days between today and an expiration date, not counting either.
+export function tradingDaysUntil(now, expiry) {
+  let n = 0;
+  while (addTradingDays(now, n + 1) < expiry) n++;
+  return n;
+}

@@ -98,17 +98,19 @@ function renderSetup(s) {
     return;
   }
   const c = s.contract;
-  const cell = (k, v) => el('div', {}, el('dt', {}, k), el('dd', {}, v));
+  const tick = $('ticker').value || '';
+  const cell = (k, v, sub) => el('div', {}, el('dt', {}, k), el('dd', {}, v), ...(sub ? [el('p', { class: 'sub-line' }, sub)] : []));
+  const [tp1, tp2] = s.takeProfits;
   box.replaceChildren(
-    cell('Contract', `${c.expiry.slice(5)} $${c.strike} ${c.type}`),
-    cell('Entry (option mid)', `${money(c.mid)}`),
-    cell('Option target / stop', `${money(s.optionTarget)} / ${money(s.optionStop)}`),
-    cell('Reward : risk', `${s.rewardRisk} : 1`),
-    cell('Delta · IV', `${c.delta} · ${c.iv}%`),
-    cell('Breakeven at expiry', money(s.breakeven)),
-    cell('Spread', `${c.spreadPct}%`),
-    cell('Days to expiry', String(c.dte)),
-    el('div', { class: 'wide' }, `${s.timeStop} ${s.sizing}`),
+    cell('Contract', `${c.expiry.slice(5)} $${c.strike} ${c.type}`, `${c.dte} days to expiry · Δ ${c.delta} · IV ${c.iv}%`),
+    cell('Entry price range', `${money(s.entry.optionLow)} – ${money(s.entry.optionHigh)}`, `while ${tick} is ${money(s.entry.underlyingLow)} – ${money(s.entry.underlyingHigh)}`),
+    cell('Stop loss', money(s.stopLoss.option), `if ${tick} ${s.direction === 'bull' ? 'falls below' : 'rises above'} ${money(s.stopLoss.underlying)}`),
+    cell('Reward : risk', `${s.rewardRisk} : 1`, `breakeven at expiry ${money(s.breakeven)}`),
+    cell('Take profit 1', money(tp1.option), `${tick} at ${money(tp1.underlying)} · ${tp1.action}`),
+    cell('Take profit 2', money(tp2.option), `${tick} at ${money(tp2.underlying)} · ${tp2.action}`),
+    cell('Hold time', `${s.hold.expectedDays}–${s.hold.maxDays} day${s.hold.maxDays > 1 ? 's' : ''}`, `exit by ${s.hold.exitBy.slice(5)} close`),
+    cell('Spread', `${c.spreadPct}%`, `bid ${money(c.bid)} · ask ${money(c.ask)}`),
+    el('div', { class: 'wide' }, `${s.hold.text} ${s.sizing}`),
   );
   box.hidden = false;
 }

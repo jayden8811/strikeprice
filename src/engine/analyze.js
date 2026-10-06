@@ -2,8 +2,8 @@ import { computeLevels } from './levels.js';
 import { computeVolatility, computeLiquidity } from './volatility.js';
 import { computeGex } from './gex.js';
 import { analyzeFlow, proxyFlowFromChain } from './flow.js';
-import { bsDelta, round, TRADING_DAYS, vwap } from './math.js';
-import { daysToExpiry, etDate, marketSession } from './time.js';
+import { bsDelta, bsPrice, round, TRADING_DAYS, vwap } from './math.js';
+import { addTradingDays, daysToExpiry, etDate, marketSession, tradingDaysUntil } from './time.js';
 
 const MAX_SPREAD_GOOD = 0.05;
 const MAX_SPREAD_OK = 0.10;
@@ -11,7 +11,10 @@ const IV_RV_CHEAP = 1.05;
 const IV_RV_RICH = 1.3;
 const EARNINGS_BLOCK_DAYS = 2;
 const MIN_REWARD_RISK = 1.5;
-const TARGET_DTE = 21;
+const MIN_DTE = 1;
+const MAX_DTE = 15;
+const TARGET_DTE = 8;
+const MAX_HOLD_DAYS = 5;
 
 // Main entry: answers "are conditions good to buy options on this ticker right now?"
 // and, if so, "what is the setup?". Input is plain data so any source can feed it.
@@ -237,14 +240,16 @@ function buildSetup({ ticker, chain, price, now, levels, gex, vol, earnings, bia
   const type = bias === 'bull' ? 'call' : 'put';
   const dir = bias === 'bull' ? 1 : -1;
   const atrV = Number.isFinite(levels.atr) ? levels.atr : price * 0.02;
+  const $ = (x) => `$${round(x).toFixed(2)}`; // same rounding as the returned fields
 
-  // Expiration: 7-45 DTE, closest to TARGET_DTE, preferring ones that expire before earnings.
+  // Expiration: MIN_DTE–MAX_DTE days, closest to TARGET_DTE, preferring ones before earnings.
   let expiries = [...new Set(chain.map((o) => o.expiry))]
     .map((e) => ({ e, dte: daysToExpiry(e, now) }))
-    .filter((x) => x.dte >= 7 && x.dte <= 45);
+    // At least one full trading day before expiry, so there's room to exit before expiration day.
+    .filter((x) => x.dte >= MIN_DTE && x.dte <= MAX_DTE && tradingDaysUntil(now, x.e) >= 1);
   const preEarnings = earnings.date && earnings.days >= 0 ? expiries.filter((x) => x.e < earnings.date) : expiries;
   if (preEarnings.length) expiries = preEarnings;
-  if (!expiries.length) return { error: 'No expiration between 7 and 45 days with usable quotes.' };
+  if (!expiries.length) return { error: `No expiration within ${MAX_DTE} days with usable quotes.` };
   expiries.sort((a, b) => Math.abs(a.dte - TARGET_DTE) - Math.abs(b.dte - TARGET_DTE));
 
   let pick = null;
@@ -264,35 +269,60 @@ function buildSetup({ ticker, chain, price, now, levels, gex, vol, earnings, bia
     pick = cands[0];
     break;
   }
-  if (!pick) return { error: 'No contract with a tight enough spread in the 7–45 day window.' };
+  if (!pick) return { error: `No contract with a tight enough spread expiring within ${MAX_DTE} days.` };
 
-  // Underlying stop: back through the trigger level, with a small ATR buffer.
+  const iv = pick.iv || vol.atmIV;
+  const dailyMove = (price * iv) / Math.sqrt(TRADING_DAYS);
+
+  // Stop: the underlying moving back through the trigger level, with a small ATR buffer.
   const stop = trigger.level - dir * 0.15 * atrV;
-  // Target: nearest meaningful level in the trade direction, else one daily expected move.
-  const dailyMove = price * (pick.iv || vol.atmIV) / Math.sqrt(TRADING_DAYS);
-  const candidates = [levels.priorHigh, levels.priorLow, levels.dayHigh, levels.dayLow, gex?.callWall, gex?.putWall, gex?.flip]
-    .filter((x) => Number.isFinite(x) && dir * (x - price) >= 0.25 * atrV);
-  const nearest = candidates.sort((a, b) => dir * (a - b))[0];
-  const target = nearest ?? price + dir * Math.max(dailyMove, 0.5 * atrV);
 
-  const gamma = Number.isFinite(pick.gamma) && pick.gamma > 0 ? pick.gamma : 0;
-  const optAt = (s) => Math.max(0.01, pick.mid + pick.delta * (s - price) + 0.5 * gamma * (s - price) ** 2);
-  const optTarget = optAt(target);
-  const optStop = optAt(stop);
-  const reward = optTarget - pick.mid;
-  const risk = pick.mid - optStop;
-  const rr = risk > 0 ? reward / risk : NaN;
+  // Take profits: the next two key levels in the trade direction, else expected-move multiples.
+  const levelsAhead = [levels.priorHigh, levels.priorLow, levels.dayHigh, levels.dayLow, gex?.callWall, gex?.putWall, gex?.flip]
+    .filter((x) => Number.isFinite(x) && dir * (x - price) >= 0.25 * atrV)
+    .sort((a, b) => dir * (a - b));
+  const tp1 = levelsAhead[0] ?? price + dir * Math.max(dailyMove, 0.5 * atrV);
+  const tp2 = levelsAhead.find((x) => dir * (x - tp1) >= 0.25 * atrV) ?? tp1 + dir * Math.max(dailyMove, 0.5 * atrV);
+
+  // Hold time: a random walk covers distance d in about (d / dailyMove)^2 days. Short-dated
+  // options decay fast, so cap the hold and never hold into the final trading day.
+  const daysFor = (target) => Math.ceil((Math.abs(target - price) / dailyMove) ** 2);
+  const maxHold = Math.min(MAX_HOLD_DAYS, tradingDaysUntil(now, pick.expiry));
+  const hold1 = Math.min(maxHold, Math.max(1, daysFor(tp1)));
+  const hold2 = Math.min(maxHold, Math.max(hold1, daysFor(tp2)));
+
+  // Option values via Black-Scholes repricing (includes time decay), anchored to the live mid.
+  const offset = pick.mid - bsPrice(price, pick.strike, pick.dte / 365, iv, type);
+  const optAt = (s, daysLater) =>
+    Math.max(0.01, bsPrice(s, pick.strike, Math.max(pick.dte - daysLater * 1.4, 0.05) / 365, iv, type) + offset);
+  const optTp1 = optAt(tp1, hold1);
+  const optTp2 = optAt(tp2, hold2);
+  const optStop = optAt(stop, 0);
+
+  const rrAt = (paid) => (paid > optStop ? (optTp1 - paid) / (paid - optStop) : NaN);
+  const rr = rrAt(pick.mid);
   if (!(rr >= MIN_REWARD_RISK)) {
-    return { extended: true, error: `Reward-to-risk to the next level is only ${Number.isFinite(rr) ? rr.toFixed(1) : 'n/a'}:1; not worth buying premium.` };
+    return { extended: true, error: `Reward-to-risk to the first target is only ${Number.isFinite(rr) ? rr.toFixed(1) : 'n/a'}:1; not worth buying premium.` };
   }
 
+  // Entry range: work a limit order from just under mid; never pay more than keeps reward:risk >= MIN.
+  const quarter = (pick.ask - pick.bid) / 4;
+  const rrCap = (optTp1 + MIN_REWARD_RISK * optStop) / (1 + MIN_REWARD_RISK);
+  const entryLow = Math.max(pick.bid, pick.mid - quarter);
+  const entryHigh = Math.max(entryLow, Math.min(pick.ask, pick.mid + quarter, rrCap));
+  // Underlying zone: from the trigger level up to half an ATR beyond it; past that, don't chase.
+  const zoneFar = trigger.level + dir * 0.5 * atrV;
+  const underlyingZone = dir > 0 ? [trigger.level, zoneFar] : [zoneFar, trigger.level];
+
+  const exitBy = addTradingDays(now, hold2);
   const breakeven = pick.strike + dir * pick.mid;
-  const timeStopDays = Math.max(1, Math.min(3, Math.floor(pick.dte / 5)));
   const exp = fmtExpiry(pick.expiry);
+  const days = (n) => `${n} trading day${n > 1 ? 's' : ''}`;
   const sentence =
-    `Buy the ${ticker} ${exp} $${fmtStrike(pick.strike)} ${type} near $${pick.mid.toFixed(2)} while ${ticker} holds ` +
-    `${bias === 'bull' ? 'above' : 'below'} $${trigger.level.toFixed(2)}. Target $${target.toFixed(2)}, ` +
-    `exit if it ${bias === 'bull' ? 'loses' : 'reclaims'} $${stop.toFixed(2)}.`;
+    `Buy the ${ticker} ${exp} $${fmtStrike(pick.strike)} ${type} between ${$(entryLow)} and ${$(entryHigh)} ` +
+    `while ${ticker} holds ${bias === 'bull' ? 'above' : 'below'} ${$(trigger.level)}. ` +
+    `Take profit at ${$(tp1)} and ${$(tp2)}; stop if ${ticker} ${bias === 'bull' ? 'loses' : 'reclaims'} ${$(stop)}. ` +
+    `Hold up to ${days(hold2)}.`;
 
   return {
     sentence,
@@ -306,19 +336,31 @@ function buildSetup({ ticker, chain, price, now, levels, gex, vol, earnings, bia
       ask: pick.ask,
       mid: round(pick.mid),
       delta: round(pick.delta, 2),
-      iv: round(pick.iv * 100, 1),
+      iv: round(iv * 100, 1),
       spreadPct: round(pick.spread * 100, 1),
       oi: pick.oi,
       volume: pick.volume,
     },
-    entry: round(trigger.level),
-    stop: round(stop),
-    target: round(target),
+    entry: {
+      optionLow: round(entryLow),
+      optionHigh: round(entryHigh),
+      underlyingLow: round(underlyingZone[0]),
+      underlyingHigh: round(underlyingZone[1]),
+      trigger: round(trigger.level),
+    },
+    stopLoss: { underlying: round(stop), option: round(optStop) },
+    takeProfits: [
+      { label: 'TP1', underlying: round(tp1), option: round(optTp1), days: hold1, action: 'Sell half; move the stop to your entry price.' },
+      { label: 'TP2', underlying: round(tp2), option: round(optTp2), days: hold2, action: 'Sell the rest.' },
+    ],
+    hold: {
+      expectedDays: hold1,
+      maxDays: hold2,
+      exitBy,
+      text: `Expect TP1 within about ${days(hold1)}. Exit everything by the close on ${fmtDate(exitBy)} if targets aren't hit; don't hold into expiration day.`,
+    },
     breakeven: round(breakeven),
-    optionTarget: round(optTarget),
-    optionStop: round(optStop),
     rewardRisk: round(rr, 1),
-    timeStop: `Exit if the target isn't hit within ${timeStopDays} trading day${timeStopDays > 1 ? 's' : ''}.`,
     sizing: 'Premium paid is the max loss. Risk 1–2% of the account at most.',
   };
 }
@@ -388,6 +430,10 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 function fmtExpiry(e) {
   const [, m, d] = e.split('-').map(Number);
   return `${MONTHS[m - 1]} ${d}`;
+}
+function fmtDate(ymd) {
+  const d = new Date(`${ymd}T12:00:00Z`);
+  return `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getUTCDay()]} ${fmtExpiry(ymd)}`;
 }
 function fmtStrike(k) {
   return Number.isInteger(k) ? String(k) : k.toFixed(2);

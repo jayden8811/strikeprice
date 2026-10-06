@@ -23,21 +23,35 @@ test('parses OCC option symbols', () => {
 });
 
 test('every verdict is either a full setup or levels to watch', () => {
+  let sawSetup = false;
   for (const t of TICKERS) {
     const r = analyze(demoData(t, new Date('2026-10-06T18:00:00Z')));
     assert.ok(['good', 'not'].includes(r.verdict));
     assert.equal(typeof r.summary, 'string');
     if (r.verdict === 'good') {
       const s = r.setup;
+      const dir = s.direction === 'bull' ? 1 : -1;
       assert.ok(s.rewardRisk >= 1.5);
-      assert.ok(s.contract.dte >= 7 && s.contract.dte <= 45);
-      if (s.direction === 'bull') assert.ok(s.stop < s.entry && s.target > r.price);
-      else assert.ok(s.stop > s.entry && s.target < r.price);
+      assert.ok(s.contract.dte >= 1 && s.contract.dte <= 15);
+      // Stop is behind the entry trigger; TP2 is beyond TP1, which is beyond the current price.
+      assert.ok(dir * (s.stopLoss.underlying - s.entry.trigger) < 0);
+      assert.ok(dir * (s.takeProfits[0].underlying - r.price) > 0);
+      assert.ok(dir * (s.takeProfits[1].underlying - s.takeProfits[0].underlying) > 0);
+      // Option prices: stop < entry range < TP1 < TP2, and the range sits inside the quote.
+      assert.ok(s.stopLoss.option < s.entry.optionLow);
+      assert.ok(s.entry.optionLow <= s.entry.optionHigh && s.entry.optionHigh < s.takeProfits[0].option);
+      assert.ok(s.takeProfits[0].option <= s.takeProfits[1].option);
+      assert.ok(s.entry.optionLow >= s.contract.bid && s.entry.optionHigh <= s.contract.ask);
+      // Hold ends before the expiration date.
+      assert.ok(s.hold.exitBy < s.contract.expiry);
+      assert.ok(s.hold.expectedDays <= s.hold.maxDays);
+      sawSetup = true;
     } else {
       assert.equal(r.setup, null);
       assert.ok(r.reasons.length > 0);
     }
   }
+  assert.ok(sawSetup, 'at least one demo ticker should produce a setup');
 });
 
 test('closed market is never "good"', () => {
@@ -83,4 +97,20 @@ test('GEX: call-only open interest is positive, put-only negative', () => {
   const base = { strike: 100, expiry: '2026-10-30', iv: 0.3, oi: 1000, gamma: 0.03 };
   assert.ok(computeGex({ chain: [{ ...base, type: 'call' }], price: 100, now }).net > 0);
   assert.ok(computeGex({ chain: [{ ...base, type: 'put' }], price: 100, now }).net < 0);
+});
+
+test('short-dated picks always leave a trading day before expiry', async () => {
+  const { tradingDaysUntil, addTradingDays } = await import('../src/engine/time.js');
+  const fri = new Date('2026-10-09T15:00:00Z');
+  assert.equal(addTradingDays(fri, 1), '2026-10-12'); // Friday → Monday
+  assert.equal(tradingDaysUntil(fri, '2026-10-12'), 0);
+  assert.equal(tradingDaysUntil(fri, '2026-10-16'), 4);
+  // Sweep across a week of start times; any setup must exit before expiration day.
+  for (let day = 0; day < 7; day++) {
+    for (const t of TICKERS) {
+      const d = demoData(t, new Date(Date.UTC(2026, 9, 5 + day, 18)));
+      const r = analyze(d);
+      if (r.setup) assert.ok(r.setup.hold.exitBy < r.setup.contract.expiry, `${t} day ${day}`);
+    }
+  }
 });

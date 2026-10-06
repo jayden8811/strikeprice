@@ -82,11 +82,13 @@ Once any print arrives, flow becomes the heaviest-weighted directional signal.
 - **Direction:** a vote across options flow, price vs. VWAP, opening-range break, daily trend and SPY.
 - **Trigger:** price must already be through both VWAP and the opening range in the bias direction.
 
-**Setup:**
-- **Contract:** a ~0.50 delta call or put, 7–45 DTE (aiming for ~21), with a spread of 10% or less.
-- **Stop:** the underlying moving back through the trigger level, plus a small ATR buffer.
-- **Target:** the next key level (prior-day high/low, call or put wall, gamma flip), or one daily expected move if none is close.
-- **Reward:risk:** the option's value at the target and stop is estimated with delta and gamma. Below 1.5:1, the app says "wait" instead of giving a setup.
+**Setup** (calls or puts, expiring within 15 days):
+- **Contract:** a ~0.50 delta option expiring in 1–15 days (aiming for ~8), with a spread of 10% or less. The expiration must leave at least one full trading day before expiry, and the app prefers one before earnings.
+- **Entry price range:** a limit range for the option, from just under mid up to the most you can pay and keep 1.5:1 reward:risk. Also a price zone for the underlying, from the trigger level to half an ATR beyond it; past that, don't chase.
+- **Stop loss:** the underlying moving back through the trigger level plus a small ATR buffer, with the option's estimated value at that point.
+- **Take profits:** TP1 at the next key level (sell half, move the stop to entry) and TP2 at the level after it, or expected-move multiples when no levels are close. Each shows the underlying price and the option's estimated value, including time decay.
+- **Hold time:** the expected days to reach TP1, from the stock's typical daily move, and a maximum hold of up to 5 trading days. The app gives an exit-by date that is always before expiration day.
+- **Reward:risk:** below 1.5:1 to TP1, the app says "wait" instead of giving a setup.
 
 ## Layout
 
