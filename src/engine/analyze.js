@@ -52,10 +52,12 @@ export function analyze(input) {
   else if (!trigger.active) blockers.push(`No confirmed ${direction.bias === 'bull' ? 'breakout' : 'breakdown'} through a key level yet.`);
 
   let setup = null;
+  let extended = false;
   if (!blockers.length) {
     setup = buildSetup({ ticker, chain, price, now, levels, gex, vol, earnings, bias: direction.bias, trigger });
     if (setup.error) {
       blockers.push(setup.error);
+      extended = setup.extended;
       setup = null;
     }
   }
@@ -68,7 +70,7 @@ export function analyze(input) {
     session,
     verdict,
     bias: direction.bias,
-    summary: setup ? setup.sentence : watchSentence({ ticker, levels, gex, price, blockers, bias: direction.bias, trigger }),
+    summary: setup ? setup.sentence : watchSentence({ ticker, levels, gex, price, blockers, bias: direction.bias, trigger, extended, session }),
     setup,
     watch: setup ? null : watchLevels({ levels, gex, price }),
     reasons: blockers,
@@ -281,7 +283,7 @@ function buildSetup({ ticker, chain, price, now, levels, gex, vol, earnings, bia
   const risk = pick.mid - optStop;
   const rr = risk > 0 ? reward / risk : NaN;
   if (!(rr >= MIN_REWARD_RISK)) {
-    return { error: `Reward-to-risk to the next level is only ${Number.isFinite(rr) ? rr.toFixed(1) : 'n/a'}:1; not worth buying premium.` };
+    return { extended: true, error: `Reward-to-risk to the next level is only ${Number.isFinite(rr) ? rr.toFixed(1) : 'n/a'}:1; not worth buying premium.` };
   }
 
   const breakeven = pick.strike + dir * pick.mid;
@@ -343,14 +345,18 @@ function watchLevels({ levels, gex, price }) {
   };
 }
 
-function watchSentence({ ticker, levels, gex, price, blockers, bias, trigger }) {
+function watchSentence({ ticker, levels, gex, price, blockers, bias, trigger, extended, session }) {
   const w = watchLevels({ levels, gex, price });
   const $ = (x) => `$${x.toFixed(2)}`;
   const reason = blockers.length ? `${blockers[0]} ` : '';
   if (bias && trigger.level != null) {
     const side = bias === 'bull' ? 'calls' : 'puts';
-    if (trigger.active) {
+    if (trigger.active && extended) {
       return `${reason}${ticker} is extended from its entry level; for ${side}, wait for a pullback toward ${$(trigger.level)} that holds.`;
+    }
+    if (trigger.active) {
+      const when = session === 'open' ? '' : ' at the open';
+      return `${reason}Leaning ${bias === 'bull' ? 'bullish' : 'bearish'}: ${side} stay in play${when} while ${ticker} holds ${bias === 'bull' ? 'above' : 'below'} ${$(trigger.level)}.`;
     }
     return `${reason}Leaning ${bias === 'bull' ? 'bullish' : 'bearish'}: watch for a ${bias === 'bull' ? 'break above' : 'break below'} ${$(trigger.level)} for ${side}.`;
   }
