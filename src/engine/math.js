@@ -92,3 +92,18 @@ export function round(x, dp = 2) {
   const f = 10 ** dp;
   return Math.round(x * f) / f;
 }
+
+// Implied volatility from an option price by bisection (r = 0, no dividends).
+export function impliedVol(price, S, K, T, type) {
+  const intrinsic = Math.max(0, type === 'call' ? S - K : K - S);
+  if (!(price > intrinsic) || !(T > 0)) return NaN;
+  let lo = 0.01;
+  let hi = 5;
+  if (bsPrice(S, K, T, hi, type) < price) return NaN;
+  for (let i = 0; i < 60; i++) {
+    const mid = (lo + hi) / 2;
+    if (bsPrice(S, K, T, mid, type) > price) hi = mid;
+    else lo = mid;
+  }
+  return (lo + hi) / 2;
+}
