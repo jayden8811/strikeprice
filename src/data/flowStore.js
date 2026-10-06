@@ -1,5 +1,5 @@
 // In-memory store for real-time options flow prints.
-// Prints arrive by POST /api/flow, or by polling FLOW_FEED_URL if it is set.
+// Prints arrive by POST /api/flow, by polling FLOW_FEED_URL, or from the Massive WebSocket.
 
 const KEEP_MS = 2 * 60 * 60_000;
 const prints = [];
@@ -14,11 +14,12 @@ export function normalizePrint(p) {
     type,
     strike: Number(p.strike),
     expiry: String(p.expiry ?? p.expiration ?? ''),
-    side: side.includes('ask') || side === 'buy' ? 'ask' : side.includes('bid') || side === 'sell' ? 'bid' : 'mid',
+    side: side.includes('ask') || side === 'buy' ? 'ask' : side.includes('bid') || side === 'sell' ? 'bid' : side === 'unknown' ? 'unknown' : 'mid',
     size: Number(p.size ?? p.quantity ?? 0),
     price: Number(p.price ?? 0),
     premium: p.premium != null ? Number(p.premium) : undefined,
     sweep: Boolean(p.sweep ?? p.is_sweep ?? false),
+    ...(p.tick != null && { tick: p.tick }),
   };
 }
 

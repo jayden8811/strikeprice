@@ -61,3 +61,21 @@ export function proxyFlowFromChain({ chain, price, now }) {
     spot: price,
   };
 }
+
+// Feeds without an aggressor side (e.g. raw exchange trades). Recent prints are compared
+// to the chain's bid/ask (at/above ask = bought, at/below bid = sold); older ones, where
+// quotes have since moved, fall back to the tick rule recorded when the print arrived.
+const QUOTE_MAX_AGE_MS = 2 * 60_000;
+
+export function classifySides(prints, chain, now = new Date()) {
+  const quotes = new Map(chain.map((o) => [`${o.type}|${o.strike}|${o.expiry}`, o]));
+  const byTick = (p) => (p.tick > 0 ? 'ask' : p.tick < 0 ? 'bid' : 'mid');
+  return prints.map((p) => {
+    if (p.side !== 'unknown') return p;
+    const q = quotes.get(`${p.type}|${p.strike}|${p.expiry}`);
+    const fresh = now - new Date(p.time) <= QUOTE_MAX_AGE_MS;
+    if (!fresh || !q || !(q.bid > 0) || !(q.ask > q.bid)) return { ...p, side: byTick(p) };
+    const edge = (q.ask - q.bid) * 0.25;
+    return { ...p, side: p.price >= q.ask - edge ? 'ask' : p.price <= q.bid + edge ? 'bid' : 'mid' };
+  });
+}

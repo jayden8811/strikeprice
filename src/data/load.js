@@ -4,6 +4,8 @@ import * as tradier from './tradier.js';
 import * as alpaca from './alpaca.js';
 import { demoData } from './demo.js';
 import { getPrints } from './flowStore.js';
+import * as massive from './massive.js';
+import { classifySides } from '../engine/flow.js';
 
 const TTL_MS = 10_000;
 const cache = new Map();
@@ -78,7 +80,9 @@ export async function loadTicker(ticker, { demo = false } = {}) {
     throw new Error(`Could not load price data for ${ticker}. Check the symbol and your data connection.`);
   }
   const ok = (r) => (r.status === 'fulfilled' ? r.value : null);
-  const allPrints = getPrints();
+  const stored = getPrints();
+  // Quotes move, so classify against the chain as it was fetched; good enough within ~15s.
+  const allPrints = stored && classifySides(stored.filter((p) => p.ticker === ticker), ok(chain) ?? []);
 
   return {
     ticker,
@@ -99,7 +103,7 @@ export async function loadTicker(ticker, { demo = false } = {}) {
       mode: 'live',
       prices: p.name.prices,
       options: chain.status === 'fulfilled' ? p.name.options : 'unavailable',
-      flow: allPrints ? 'Live feed' : 'Chain volume proxy (no feed connected)',
+      flow: allPrints ? (massive.enabled() ? 'Massive (real-time)' : 'Live feed') : 'Chain volume proxy (no feed connected)',
     },
   };
 }

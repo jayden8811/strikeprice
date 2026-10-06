@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { analyze } from './src/engine/analyze.js';
 import { loadTicker } from './src/data/load.js';
 import { addPrints, getPrints, startPolling } from './src/data/flowStore.js';
+import * as massive from './src/data/massive.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const DEMO = process.env.DATA_SOURCE === 'demo';
@@ -66,6 +67,7 @@ const server = createServer(async (req, res) => {
 });
 
 if (process.env.FLOW_FEED_URL) startPolling(process.env.FLOW_FEED_URL);
+if (massive.enabled()) massive.start();
 
 server.listen(PORT, () => {
   console.log(`strikeprice on http://localhost:${PORT}${DEMO ? ' (demo data)' : ''}`);

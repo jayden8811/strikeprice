@@ -43,7 +43,9 @@ The Yahoo and Cboe endpoints are unofficial. They can change or rate-limit witho
 
 ## Connecting your real-time options flow
 
-You can connect a feed in either of two ways:
+**Massive (formerly Polygon.io):** set `MASSIVE_API_KEY`. The server opens Massive's real-time options WebSocket (`wss://socket.massive.com/options`, override with `MASSIVE_WS_URL`), subscribes to every options trade (`T.*`), and keeps prints of $25K+ premium (`MASSIVE_MIN_PREMIUM`). It groups trades in the same contract that hit several exchanges within 250 ms into one sweep. Massive trades don't say who was the aggressor, so each print is labeled bought (at/near the ask), sold (at/near the bid) or mid against the live chain. Prints older than 2 minutes use the tick rule recorded when they arrived. This needs a Massive plan with real-time options trades on WebSocket.
+
+Any other feed can connect in either of two ways:
 
 - **Push:** `POST /api/flow` with a print or an array of prints. If `FLOW_TOKEN` is set, send `Authorization: Bearer <FLOW_TOKEN>`.
 - **Pull:** set `FLOW_FEED_URL` and the server polls it every 5 seconds. It expects a JSON array, or `{ data: [...] }` / `{ prints: [...] }`.
@@ -88,7 +90,7 @@ Once any print arrives, flow becomes the heaviest-weighted directional signal.
 
 ```
 server.js               HTTP server + API
-src/data/               alpaca.js, tradier.js, yahoo.js, cboe.js, flowStore.js, demo.js, load.js
+src/data/               massive.js, alpaca.js, tradier.js, yahoo.js, cboe.js, flowStore.js, demo.js, load.js
 src/engine/             analyze.js (decision), levels, volatility, gex, flow, math, time
 public/                 homepage (index.html, styles.css, app.js)
 test/                   node:test suite
