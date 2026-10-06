@@ -5,28 +5,38 @@ Type a ticker and get two answers, refreshed every 15 seconds:
 1. **Is it good to buy calls or puts on this ticker right now?**
 2. **If yes, what's the setup** (contract, entry, target, stop, reward:risk). **If no, which levels to watch.**
 
-The project has no dependencies and uses only free data sources.
+The project has no dependencies.
 
 ## Run
 
 ```bash
-npm start          # live free data → http://localhost:3000
-npm run demo       # synthetic data, works offline / after hours
+TRADIER_TOKEN=your_token npm start   # real-time data → http://localhost:3000
+npm start                            # free fallback (options ~15 min delayed)
+npm run demo                         # synthetic data, works offline / after hours
 npm test
 ```
 
 You can also add `?demo=1` to the URL to use demo data for a single page.
 
-## Data sources (free)
+## Data sources
+
+**Real-time (recommended):** set `TRADIER_TOKEN` to a Tradier brokerage API token. Real-time market data is included with a Tradier brokerage account at no extra cost; check Tradier's current terms. The app then gets real-time quotes, 1-minute bars, daily history, VIX/VIX3M and full option chains with Greeks (IV, delta, gamma) from Tradier. A free developer sandbox token also works with `TRADIER_SANDBOX=1`, but its data is delayed.
+
+**Free fallback (no token):**
 
 | Data | Source | Notes |
 |---|---|---|
 | Price bars, SPY, VIX, VIX3M | Yahoo Finance chart API | near real time for most US stocks |
 | Option chain (IV, Greeks, OI, volume, bid/ask) | Cboe delayed quotes | ~15 min delayed |
+
+**Always:**
+
+| Data | Source | Notes |
+|---|---|---|
 | Earnings date | Yahoo quoteSummary | best effort; shown as "Unknown" if unavailable |
 | Options flow | **your feed** (see below) | without a feed, unusual volume vs. open interest from the chain is used as a weak proxy |
 
-These are unofficial public endpoints. They can change or rate-limit without notice.
+The Yahoo and Cboe endpoints are unofficial. They can change or rate-limit without notice. The page footer shows which source answered each refresh.
 
 ## Connecting your real-time options flow
 
@@ -75,7 +85,7 @@ Once any print arrives, flow becomes the heaviest-weighted directional signal.
 
 ```
 server.js               HTTP server + API
-src/data/               yahoo.js, cboe.js, flowStore.js, demo.js, load.js
+src/data/               tradier.js, yahoo.js, cboe.js, flowStore.js, demo.js, load.js
 src/engine/             analyze.js (decision), levels, volatility, gex, flow, math, time
 public/                 homepage (index.html, styles.css, app.js)
 test/                   node:test suite
