@@ -36,7 +36,7 @@ You can also add `?demo=1` to the URL to use demo data for a single page.
 | Earnings date | Yahoo quoteSummary | best effort; shown as "Unknown" if unavailable |
 | Options flow | **your feed** (see below) | without a feed, unusual volume vs. open interest from the chain is used as a weak proxy |
 
-The Yahoo and Cboe endpoints are unofficial. They can change or rate-limit without notice. The page footer shows which source answered each refresh.
+The Yahoo and Cboe endpoints are unofficial. They can change or rate-limit without notice. The line under the headline shows which source answered each refresh.
 
 ## Connecting your real-time options flow
 
