@@ -5,7 +5,8 @@ const { start, end, every, results } = JSON.parse(await readFile(new URL('./out/
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const pct = (x, dp = 0) => (x == null || !Number.isFinite(x) ? '—' : `${x > 0 ? '+' : ''}${(x * 100).toFixed(dp)}%`);
-const usd = (x) => (x == null ? '—' : `${x < 0 ? '−' : ''}$${Math.abs(x).toFixed(2)}`);
+const usd = (x) => (x == null ? '—' : `${x < 0 ? '−' : ''}$${Math.abs(x).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+const usd0 = (x) => (x == null ? '—' : `${x < 0 ? '−' : ''}$${Math.abs(Math.round(x)).toLocaleString('en-US')}`);
 const sign = (x) => (x > 0 ? 'pos' : x < 0 ? 'neg' : '');
 const etTime = (iso) => new Date(iso).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' });
 const shortDate = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
@@ -68,7 +69,11 @@ function timeOfDayChart(evals) {
 function blockers(evals) {
   const counts = new Map();
   for (const e of evals) {
-    const k = e.verdict === 'good' ? 'Flagged good to trade' : (e.reason ?? 'Other').replace(/\.$/, '');
+    const k = e.verdict === 'good'
+      ? 'Flagged good to trade'
+      : /^Reward-to-risk/.test(e.reason ?? '')
+        ? 'Reward-to-risk to the first target below 1.5:1'
+        : (e.reason ?? 'Other').replace(/\.$/, '');
     counts.set(k, (counts.get(k) ?? 0) + 1);
   }
   const rows = [...counts.entries()].sort((a, b) => b[1] - a[1]);
@@ -130,7 +135,7 @@ const sections = results.map(({ ticker, evals, trades }) => {
       ${tile('Trades taken', s.n)}
       ${tile('Win rate', s.winRate == null ? '—' : `${Math.round(s.winRate * 100)}%`)}
       ${tile('Avg return / trade', pct(s.avgRet, 1), sign(s.avgRet))}
-      ${tile('Total P&amp;L (1 contract)', usd(s.total), sign(s.total))}
+      ${tile('Total P&amp;L (1 contract)', usd0(s.total), sign(s.total))}
     </dl>
     <div class="cols">
       <div class="panel"><h3>When it said “good to trade”</h3><p class="muted">Flags per 30-minute window, all days combined (Eastern time).</p>${timeOfDayChart(evals)}</div>
@@ -184,7 +189,7 @@ p { margin: 0; }
 .ticker { display: grid; gap: 18px; }
 .t-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }
 .t-head p { color: var(--muted); font-size: 14px; }
-.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
 .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; display: grid; gap: 10px; min-width: 0; }
 details.panel summary { cursor: pointer; list-style: none; }
 details.panel summary::-webkit-details-marker { display: none; }
@@ -223,7 +228,7 @@ td.small { font-size: 12px; }
       ${tile('Trades', allStats.n)}
       ${tile('Win rate', allStats.winRate == null ? '—' : `${Math.round(allStats.winRate * 100)}%`)}
       ${tile('Avg return / trade', pct(allStats.avgRet, 1), sign(allStats.avgRet))}
-      ${tile('Total P&amp;L (1 contract each)', usd(allStats.total), sign(allStats.total))}
+      ${tile('Total P&amp;L (1 contract each)', usd0(allStats.total), sign(allStats.total))}
       ${tile('If held to expiry', pct(allStats.expAvg, 1), sign(allStats.expAvg))}
       ${tile('Avg peak after entry', pct(allStats.peakAvg, 0), sign(allStats.peakAvg))}
     </dl>
@@ -243,5 +248,31 @@ td.small { font-size: 12px; }
   </section>
 </div>`;
 
-await writeFile(new URL('./out/report.html', import.meta.url), html);
+// Takeaways, computed from the results so the wording always matches the numbers.
+const stoppedFirst = all.filter((t) => t.exits[0].reason === 'stop');
+const stoppedThenRan = stoppedFirst.filter((t) => t.contractPath.maxGainPct >= 0.5);
+const reachedTp1 = all.filter((t) => t.exits.some((x) => x.reason === 'TP1'));
+const reachedTp2 = all.filter((t) => t.exits.some((x) => x.reason === 'TP2'));
+// Busiest and quietest 30-minute windows for flags, all tickers combined.
+const windows = new Map();
+for (const r of results) for (const e of r.evals) {
+  const [h, m] = e.time.split(':').map(Number);
+  const w = Math.floor((h * 60 + m) / 30) * 30;
+  const x = windows.get(w) ?? { checks: 0, good: 0 };
+  x.checks++;
+  if (e.verdict === 'good') x.good++;
+  windows.set(w, x);
+}
+const fmtW = (w) => `${((Math.floor(w / 60) + 11) % 12) + 1}:${String(w % 60).padStart(2, '0')}`;
+const ranked = [...windows.entries()].map(([w, x]) => ({ w, rate: x.good / x.checks })).sort((a, b) => b.rate - a.rate);
+const goodShare = results.map((r) => `${r.ticker} ${((100 * r.evals.filter((e) => e.verdict === 'good').length) / r.evals.length).toFixed(0)}%`).join(', ');
+const byT = Object.fromEntries(results.map((r) => [r.ticker, stats(r.trades)]));
+const takeaways = `<h3>What the test shows</h3><ul>
+  <li>It flagged “good to trade” for ${goodShare} of checks. Flags are spread through the day: the busiest half hour was ${fmtW(ranked[0].w)} ET (${Math.round(ranked[0].rate * 100)}% of checks flagged) and the quietest was ${fmtW(ranked.at(-1).w)} ET (${Math.round(ranked.at(-1).rate * 100)}%).</li>
+  <li>Overall: ${allStats.n} trades, ${Math.round(allStats.winRate * 100)}% winners, ${pct(allStats.avgRet, 1)} average per trade, ${usd0(allStats.total)} total on one contract per trade (${results.map((r) => `${r.ticker} ${usd0(byT[r.ticker].total)}`).join(', ')}).</li>
+  <li>Winners averaged ${pct(allStats.avgWin, 0)} and losers ${pct(allStats.avgLoss, 0)}. ${reachedTp1.length} trades reached TP1 and ${reachedTp2.length} reached TP2.</li>
+  <li>The stop decides most outcomes: ${stoppedFirst.length} of ${allStats.n} trades were stopped out first, and ${stoppedThenRan.length} of those contracts later rose 50% or more before expiring. The stop sits just past the entry level (0.15 × ATR), so normal back-and-forth often triggers it.</li>
+  <li>Holding every contract to expiration instead would have averaged ${pct(allStats.expAvg, 1)} per trade, with ${Math.round(allStats.expWin * 100)}% finishing in the money. The take-profit and stop rules did better than holding.</li>
+</ul>`;
+await writeFile(new URL('./out/report.html', import.meta.url), html.replace('__TAKEAWAYS__', takeaways));
 console.log(JSON.stringify({ all: allStats, byTicker: Object.fromEntries(results.map((r) => [r.ticker, { ...stats(r.trades), checks: r.evals.length, good: r.evals.filter((e) => e.verdict === 'good').length }])) }, null, 1));

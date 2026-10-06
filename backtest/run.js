@@ -7,7 +7,7 @@
 //   node backtest/run.js --tickers SPY,QQQ --start 2026-04-01 --end 2026-09-25 --every 5
 import { mkdir, writeFile } from 'node:fs/promises';
 import { analyze } from '../src/engine/analyze.js';
-import { bsDelta, bsGamma, impliedVol } from '../src/engine/math.js';
+import { bsDelta, bsGamma, bsPrice, impliedVol } from '../src/engine/math.js';
 import { daysToExpiry, etDate, etParts } from '../src/engine/time.js';
 import { occ, optionBars, stockBars, yahooDailyCloses } from './data.js';
 
@@ -22,6 +22,7 @@ const FIRST_EVAL = 30; // minutes after 9:30 (opening range complete)
 const LAST_EVAL = 375; // 15:45
 const STRIKE_BAND = 0.015; // strikes within ±1.5% of the open
 const STALE_MS = 30 * 60_000; // ignore option prints older than this
+const FRESH_MS = 5 * 60_000; // during a trade, older prints are repriced from the stock
 // SPY/QQQ options are among the tightest in the market; historical quotes aren't in
 // the free data, so model the spread: max($0.01, 0.6% of price).
 const spreadOf = (p) => Math.max(0.01, p * 0.006);
@@ -183,10 +184,22 @@ async function simulate({ ticker, D, T, setup, price, byDate, tradingDays }) {
   const days = tradingDays.filter((d) => d >= D && d <= c.expiry);
   const path = days.flatMap((d) => (byDate.get(d) ?? []).map((b) => ({ ...b, d }))).filter((b) => b.t >= T);
 
+  // Option value at the end of minute bar b. Use the option's own trade when it's recent;
+  // otherwise (e.g. at the open, before it trades) reprice it from the stock's price
+  // with the IV implied by its last trade, so stale prints don't leak into exits.
+  const stockClose = new Map(days.flatMap((d) => (byDate.get(d) ?? []).map((x) => [x.t, x.c])));
   let oi = -1;
-  const optAt = (t) => {
-    oi = lastBefore(opt, t + 60_000, Math.max(0, oi));
-    return oi >= 0 ? opt[oi].c : null;
+  const optAt = (b) => {
+    oi = lastBefore(opt, b.t + 60_000, Math.max(0, oi));
+    if (oi < 0) return null;
+    const last = opt[oi];
+    if (b.t - last.t <= FRESH_MS) return last.c;
+    const sThen = stockClose.get(last.t);
+    if (sThen == null) return last.c;
+    const tThen = daysToExpiry(c.expiry, new Date(last.t + 60_000)) / 365;
+    const iv = impliedVol(last.c, sThen, c.strike, tThen, c.type);
+    if (!Number.isFinite(iv)) return last.c;
+    return bsPrice(b.c, c.strike, Math.max(daysToExpiry(c.expiry, new Date(b.t + 60_000)), 0.001) / 365, iv, c.type);
   };
   const sell = (p) => Math.max(0, p - spreadOf(p) / 2);
 
@@ -197,7 +210,7 @@ async function simulate({ ticker, D, T, setup, price, byDate, tradingDays }) {
   let exitTime = null;
   for (const b of path) {
     if (b.d > setup.hold.exitBy) break;
-    const p = optAt(b.t);
+    const p = optAt(b);
     if (p == null) continue;
     const hitStop = dir > 0 ? b.l <= setup.stopLoss.underlying : b.h >= setup.stopLoss.underlying;
     const hitTp1 = dir > 0 ? b.h >= tp1.underlying : b.l <= tp1.underlying;
