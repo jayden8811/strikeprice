@@ -54,9 +54,13 @@ test('Alpaca provider feeds the engine end to end', async (t) => {
   const realFetch = globalThis.fetch;
   const stub = alpacaStub(d);
   globalThis.fetch = async (url, opts) => stub(String(url), opts?.headers ?? {});
+  // These tests cover the provider's own option chain, not Massive's.
+  const massiveKey = process.env.MASSIVE_API_KEY;
+  delete process.env.MASSIVE_API_KEY;
   process.env.ALPACA_KEY_ID = 'kid';
   process.env.ALPACA_SECRET_KEY = 'secret';
   t.after(() => {
+    if (massiveKey) process.env.MASSIVE_API_KEY = massiveKey;
     globalThis.fetch = realFetch;
     delete process.env.ALPACA_KEY_ID;
     delete process.env.ALPACA_SECRET_KEY;

@@ -97,6 +97,9 @@ export function start() {
             retry = 1000;
             ws.send(JSON.stringify({ action: 'subscribe', params: channels }));
           }
+          if (m.status === 'max_connections') {
+            console.warn('massive: max connections reached; another app or session is using this key. Retrying with backoff.');
+          }
           if (m.status === 'auth_failed') {
             console.error('massive: authentication failed; check MASSIVE_API_KEY. Not reconnecting.');
             stopped = true;
