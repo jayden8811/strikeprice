@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>strikeprice</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <nav class="nav">
+    <span class="nav-status" id="status"><span class="dot"></span><span id="status-text">Market</span></span>
+    <a class="logo" href="/">
+      <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><g stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9"/></g></svg>
+      strikeprice
+    </a>
+    <a class="nav-cta" href="#flow">See live flow</a>
+  </nav>
+
+  <main class="hero">
+    <form class="headline" id="form" autocomplete="off">
+      <h1 id="headline">
+        Is <label class="chip ticker-chip"><input id="ticker" name="ticker" placeholder="TICKER" maxlength="10" spellcheck="false" aria-label="Ticker" /></label>
+        <span id="verdict-text">good to trade <span class="chip">right now</span>?</span>
+      </h1>
+      <p class="summary" id="summary">Type a ticker and press Enter.</p>
+      <div class="setup" id="setup" hidden></div>
+      <p class="meta" id="meta"></p>
+    </form>
+  </main>
+
+  <section class="panel" id="panel" hidden>
+    <div class="handle"></div>
+    <div class="panel-inner">
+      <div class="block">
+        <h2>Conditions</h2>
+        <ul class="checks" id="checks"></ul>
+      </div>
+      <div class="grid2">
+        <div class="block">
+          <h2>Key levels</h2>
+          <dl class="kv" id="levels"></dl>
+        </div>
+        <div class="block">
+          <h2>Volatility &amp; positioning</h2>
+          <dl class="kv" id="metrics"></dl>
+        </div>
+      </div>
+      <div class="block" id="flow">
+        <h2>Options flow <span class="sub" id="flow-sub"></span></h2>
+        <div class="flowbar"><span id="flow-bull"></span><span id="flow-bear"></span></div>
+        <div class="table-wrap"><table class="flow-table"><thead><tr><th>Time</th><th>Contract</th><th>Side</th><th>Size</th><th>Premium</th></tr></thead><tbody id="flow-rows"></tbody></table></div>
+      </div>
+      <p class="disclaimer">Educational tool, not financial advice. Options can lose 100% of the premium paid. Free data can be delayed or incomplete; confirm prices with your broker before trading.</p>
+    </div>
+  </section>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

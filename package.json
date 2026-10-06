@@ -1,0 +1,15 @@
+{
+  "name": "strikeprice",
+  "version": "0.1.0",
+  "description": "Real-time conditions check and call/put setup for any ticker.",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "demo": "DATA_SOURCE=demo node server.js",
+    "test": "node --test"
+  }
+}
