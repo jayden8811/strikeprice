@@ -93,16 +93,26 @@ export function round(x, dp = 2) {
   return Math.round(x * f) / f;
 }
 
-// Implied volatility from an option price by bisection (r = 0, no dividends).
-export function impliedVol(price, S, K, T, type) {
-  const intrinsic = Math.max(0, type === 'call' ? S - K : K - S);
+// Implied volatility from an option price: Newton steps on vega, bisection as fallback.
+export function impliedVol(price, S, K, T, type, r = 0) {
+  const intrinsic = Math.max(0, type === 'call' ? S - K * Math.exp(-r * T) : K * Math.exp(-r * T) - S);
   if (!(price > intrinsic) || !(T > 0)) return NaN;
-  let lo = 0.01;
+  let iv = 0.3;
+  for (let i = 0; i < 8; i++) {
+    const diff = bsPrice(S, K, T, iv, type, r) - price;
+    if (Math.abs(diff) < 1e-4) return iv;
+    const d = (Math.log(S / K) + (r + (iv * iv) / 2) * T) / (iv * Math.sqrt(T));
+    const vega = S * normPdf(d) * Math.sqrt(T);
+    if (vega < 1e-6) break;
+    iv -= diff / vega;
+    if (!(iv > 0.005 && iv < 5)) break;
+  }
+  let lo = 0.005;
   let hi = 5;
-  if (bsPrice(S, K, T, hi, type) < price) return NaN;
-  for (let i = 0; i < 60; i++) {
+  if (bsPrice(S, K, T, hi, type, r) < price) return NaN;
+  for (let i = 0; i < 50; i++) {
     const mid = (lo + hi) / 2;
-    if (bsPrice(S, K, T, mid, type) > price) hi = mid;
+    if (bsPrice(S, K, T, mid, type, r) > price) hi = mid;
     else lo = mid;
   }
   return (lo + hi) / 2;

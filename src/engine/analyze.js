@@ -114,6 +114,23 @@ export function analyze(input) {
   };
 }
 
+// Builds the setup the app would give for a chosen direction and entry level, skipping
+// the conditions checks. Used by the backtest's random-entry comparison.
+export function setupFor(input, bias, triggerLevel) {
+  const now = input.now ?? new Date();
+  const price = input.price;
+  const chain = input.chain ?? [];
+  const levels = computeLevels({ daily: input.daily, intraday: input.intraday, price, now });
+  const vol = computeVolatility({ closes: levels.closes, chain, price, now });
+  const gex = computeGex({ chain, price, now });
+  const earnings = earningsInfo(input.earningsDate, now);
+  const s = buildSetup({
+    ticker: input.ticker.toUpperCase(), chain, price, now, levels, gex, vol, earnings, bias,
+    trigger: { active: true, level: triggerLevel },
+  });
+  return s.error ? null : s;
+}
+
 // ---------- context ----------
 
 function marketRegime({ spyDaily = [], spyIntraday = [], spyPrice, vix, vix3m }, now) {
