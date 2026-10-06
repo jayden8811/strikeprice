@@ -4,7 +4,8 @@
 // against the live chain's bid/ask.
 //
 // MASSIVE_API_KEY       required
-// MASSIVE_WS_URL        default wss://socket.massive.com/options
+// MASSIVE_WS_URL        default wss://socket.massive.com/options (real-time: Options Advanced plan);
+//                       wss://delayed.massive.com/options for 15-min delayed plans
 // MASSIVE_MIN_PREMIUM   default 25000 ($ premium per print to keep)
 // MASSIVE_SUBSCRIBE     default T.* (all options trades)
 
@@ -80,6 +81,7 @@ export function start() {
   const channels = process.env.MASSIVE_SUBSCRIBE ?? 'T.*';
   const agg = createAggregator(minPremium, (p) => addPrints([p]));
   let retry = 1000;
+  let stopped = false;
 
   const connect = () => {
     const ws = new WebSocket(url);
@@ -95,11 +97,16 @@ export function start() {
             retry = 1000;
             ws.send(JSON.stringify({ action: 'subscribe', params: channels }));
           }
-          if (m.status === 'auth_failed') ws.close();
+          if (m.status === 'auth_failed') {
+            console.error('massive: authentication failed; check MASSIVE_API_KEY. Not reconnecting.');
+            stopped = true;
+            ws.close();
+          }
         }
       }
     });
     ws.addEventListener('close', () => {
+      if (stopped) return;
       console.warn(`massive: disconnected, retrying in ${retry / 1000}s`);
       setTimeout(connect, retry);
       retry = Math.min(retry * 2, 60_000);
