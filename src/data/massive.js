@@ -115,3 +115,54 @@ export function start() {
   };
   connect();
 }
+
+// ---------- REST option chain (official OPRA quotes, real-time on Options Advanced) ----------
+
+const REST = 'https://api.massive.com';
+const CHAIN_MAX_DTE = 60;
+
+async function restGet(url) {
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${process.env.MASSIVE_API_KEY}`, Accept: 'application/json' },
+  });
+  if (!res.ok) throw new Error(`Massive ${res.status} ${new URL(url).pathname}`);
+  return res.json();
+}
+
+export async function optionChain(symbol, now = new Date(), maxPages = 40) {
+  const params = new URLSearchParams({
+    'expiration_date.gte': now.toISOString().slice(0, 10),
+    'expiration_date.lte': new Date(now.getTime() + CHAIN_MAX_DTE * 86_400_000).toISOString().slice(0, 10),
+    limit: '250',
+  });
+  let url = `${REST}/v3/snapshot/options/${encodeURIComponent(symbol)}?${params}`;
+  const results = [];
+  for (let i = 0; url && i < maxPages; i++) {
+    const j = await restGet(url);
+    results.push(...(j.results ?? []));
+    url = j.next_url;
+  }
+  return results.map(toContract).filter(Boolean);
+}
+
+export function toContract(r) {
+  const d = r.details ?? {};
+  if (!d.expiration_date || !Number.isFinite(d.strike_price)) return null;
+  const g = r.greeks ?? {};
+  return {
+    symbol: d.ticker,
+    type: d.contract_type,
+    strike: d.strike_price,
+    expiry: d.expiration_date,
+    bid: r.last_quote?.bid ?? 0,
+    ask: r.last_quote?.ask ?? 0,
+    last: r.last_trade?.price,
+    iv: r.implied_volatility ?? 0,
+    delta: g.delta,
+    gamma: g.gamma,
+    theta: g.theta,
+    vega: g.vega,
+    oi: r.open_interest ?? 0,
+    volume: r.day?.volume ?? 0,
+  };
+}

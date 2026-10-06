@@ -59,7 +59,8 @@ export function provider() {
   return free;
 }
 
-// Gathers everything the engine needs for one ticker.
+// Gathers everything the engine needs for one ticker. With a Massive key, the option
+// chain always comes from Massive (official OPRA quotes), whatever the price provider.
 export async function loadTicker(ticker, { demo = false } = {}) {
   if (demo) return { ...demoData(ticker), sources: { mode: 'demo' } };
   const p = provider();
@@ -67,7 +68,7 @@ export async function loadTicker(ticker, { demo = false } = {}) {
   const [daily, intraday, chain, spyDaily, spyIntraday, vix, vix3m, earnings] = await Promise.allSettled([
     cached(`d:${ticker}`, 300_000, () => p.daily(ticker)),
     cached(`i:${ticker}`, TTL_MS, () => p.intraday(ticker)),
-    cached(`c:${ticker}`, p !== free ? 15_000 : 30_000, () => p.chain(ticker)),
+    cached(`c:${ticker}`, p !== free || massive.enabled() ? 15_000 : 30_000, () => (massive.enabled() ? massive.optionChain(ticker) : p.chain(ticker))),
     cached('d:SPY', 300_000, () => p.daily('SPY')),
     cached('i:SPY', TTL_MS, () => p.intraday('SPY')),
     cached('q:VIX', TTL_MS, () => p.index('VIX')),
@@ -102,7 +103,7 @@ export async function loadTicker(ticker, { demo = false } = {}) {
     sources: {
       mode: 'live',
       prices: p.name.prices,
-      options: chain.status === 'fulfilled' ? p.name.options : 'unavailable',
+      options: chain.status === 'fulfilled' ? (massive.enabled() ? 'Massive (real-time OPRA)' : p.name.options) : 'unavailable',
       flow: allPrints ? (massive.enabled() ? 'Massive (real-time)' : 'Live feed') : 'Chain volume proxy (no feed connected)',
     },
   };
