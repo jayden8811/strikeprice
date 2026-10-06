@@ -1,14 +1,17 @@
 // Alpaca market data with a free (paper) account: real-time IEX stock data and the
 // real-time "indicative" options feed. Set ALPACA_KEY_ID and ALPACA_SECRET_KEY.
 // ALPACA_FEED=sip / ALPACA_OPTIONS_FEED=opra unlock the paid full feeds.
+// DATA_PROVIDER=alpaca without keys: an outbound proxy adds the APCA-* auth headers.
 
 const DATA = 'https://data.alpaca.markets';
 const TRADING = 'https://paper-api.alpaca.markets';
 const MAX_DTE = 60;
 const SIP_DELAY_MS = 16 * 60_000; // free plans may query the full tape only 15+ min back
 
+const hasKeys = () => Boolean(process.env.ALPACA_KEY_ID && process.env.ALPACA_SECRET_KEY);
+
 export function enabled() {
-  return Boolean(process.env.ALPACA_KEY_ID && process.env.ALPACA_SECRET_KEY);
+  return hasKeys() || process.env.DATA_PROVIDER === 'alpaca';
 }
 
 const stockFeed = () => process.env.ALPACA_FEED ?? 'iex';
@@ -20,8 +23,10 @@ async function get(base, path, params = {}) {
   const url = `${base}${path}?${new URLSearchParams(params)}`;
   const res = await fetch(url, {
     headers: {
-      'APCA-API-KEY-ID': process.env.ALPACA_KEY_ID,
-      'APCA-API-SECRET-KEY': process.env.ALPACA_SECRET_KEY,
+      ...(hasKeys() && {
+        'APCA-API-KEY-ID': process.env.ALPACA_KEY_ID,
+        'APCA-API-SECRET-KEY': process.env.ALPACA_SECRET_KEY,
+      }),
       Accept: 'application/json',
     },
   });
