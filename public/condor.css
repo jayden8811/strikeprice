@@ -1,0 +1,27 @@
+.c-hero { padding: 72px 16px 56px; text-align: center; display: grid; justify-items: center; gap: 0; }
+.c-hero h1 { max-width: 980px; }
+.c-hero .summary { margin-top: 20px; }
+.mode { cursor: default; }
+.mode.paper { background: var(--good); color: #0b2a1b; }
+.chip.wait { background: var(--chip-bad); }
+
+/* Strike ladder: the four strikes on a price line with the SPX forward marked. */
+.ladder { width: min(760px, 100%); margin-top: 32px; }
+.ladder svg { width: 100%; height: auto; display: block; overflow: visible; }
+.ladder .axis { stroke: var(--card-line); stroke-width: 2; }
+.ladder .body { fill: var(--chip); }
+.ladder .wing { fill: var(--chip-bad); }
+.ladder .tick { stroke: var(--fg); stroke-width: 1.5; }
+.ladder .spot { stroke: var(--fg); stroke-width: 2; stroke-dasharray: 3 3; }
+.ladder text { fill: var(--fg); font: 600 12px Inter, system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+.ladder text.muted { fill: var(--muted); font-weight: 500; }
+
+.checks .pill.pass { background: var(--good); }
+.checks .pill.fail { background: var(--bad); }
+.log { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
+.log li { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px; color: var(--panel-muted); border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+.log li b { color: var(--panel-fg); font-weight: 500; }
+.pos { color: var(--good); }
+.neg { color: var(--bad); }
+.disclaimer a { color: inherit; }
+@media (max-width: 720px) { .log li { grid-template-columns: 1fr; gap: 2px; } }

@@ -1,7 +1,7 @@
 {
   "name": "strikeprice",
   "version": "0.1.0",
-  "description": "Real-time conditions check and call/put setup for any ticker.",
+  "description": "SPX iron condor bot with an Alpaca paper-trading connection.",
   "type": "module",
   "private": true,
   "engines": {
@@ -10,6 +10,7 @@
   "scripts": {
     "start": "node server.js",
     "demo": "DATA_SOURCE=demo node server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "condor": "node src/condor/run.js"
   }
 }

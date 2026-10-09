@@ -1,13 +1,49 @@
 # strikeprice
 
-Type a ticker and get two answers, refreshed every 15 seconds:
+A mechanical bot for short SPX iron condors, connected to an Alpaca paper-trading account, with a dashboard at `/`. The earlier directional call/put scanner is still available at `/scanner.html`.
 
-1. **Is it good to buy calls or puts on this ticker right now?**
-2. **If yes, what's the setup** (contract, entry, target, stop, reward:risk). **If no, which levels to watch.**
+## SPX iron condor bot
 
-The project has no dependencies.
+**Run**
 
-## Run
+```bash
+npm start                                   # dashboard at http://localhost:3000 (read-only)
+npm run condor                              # one decision cycle (dry run: logs, no orders)
+npm run condor -- --loop 2                  # every 2 minutes during market hours
+CONDOR_MODE=paper npm run condor -- --loop 2   # same, sending orders to the Alpaca paper account
+CONDOR_BOT=1 CONDOR_MODE=paper npm start    # dashboard and bot in one process
+npm run condor -- --verify-sign             # re-checks Alpaca's credit/debit price sign (unfillable order, cancelled)
+```
+
+Alpaca credentials come from `ALPACA_KEY_ID` / `ALPACA_SECRET_KEY`, or from a proxy that injects Alpaca's headers. Only the paper endpoint (`paper-api.alpaca.markets`) is used. State and the trade log are written to `data/condor/` (`state.json`, `log.jsonl`).
+
+**Rules** (all configurable with `CONDOR_*` environment variables, see `src/condor/config.js`)
+
+- **Entry (all must pass):**
+  - expiration 30–45 DTE, the longest available
+  - short put and short call near 16 delta (14–18), with deltas computed from Black-76 on the put-call-parity forward
+  - 50-point wings (`CONDOR_WING_WIDTH`); if that strike isn't quoted, up to 5 points narrower, never wider
+  - mid credit at least ⅓ of the width
+  - VIX 15–22
+  - at least 7 days since the last entry and at most 3 open condors
+  - no listed event day (`CONDOR_EVENT_DAYS=2026-10-28,...`)
+  - leg bid-ask widths totalling at most 30% of the credit
+  - entries only between 9:45 AM and 3:30 PM ET
+- **Size:** contracts = floor(equity × 2% ÷ max loss per contract), or 1% when VIX is at or above 20. If that rounds to 0, the bot doesn't trade.
+- **Exits:** the first rule to trigger closes all four legs as one order, with no adjustments or rolls:
+  - take profit when the cost to close is at most 50% of the credit
+  - stop when the cost to close reaches 200% of the credit
+  - time stop at 21 DTE
+- **Account limits:** no new entries after a 3% daily or 5% weekly equity drawdown. An optional pause after N losses in a row is off by default.
+- **Orders:** Alpaca multi-leg (`mleg`) limit orders. Credits are sent as negative limit prices (verified on the paper account). Entries go in at the mid credit, rounded down to $0.05, and are cancelled after 10 minutes if unfilled; the next cycle retries at the new mid. Profit exits go in at the mid cost; stop and time exits at the natural price. Unfilled exits are repriced every 5 minutes.
+
+**Data:** SPX and SPXW option quotes come from Alpaca. On the free plan this is the *indicative* feed, which approximates the official prices. SPX and VIX levels come from Yahoo. SPXW (PM-settled) is used whenever it lists the expiration.
+
+---
+
+## Directional scanner (`/scanner.html`)
+
+### Run
 
 ```bash
 ALPACA_KEY_ID=... ALPACA_SECRET_KEY=... npm start   # free real-time → http://localhost:3000

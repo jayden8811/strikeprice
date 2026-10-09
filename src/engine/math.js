@@ -117,3 +117,36 @@ export function impliedVol(price, S, K, T, type, r = 0) {
   }
   return (lo + hi) / 2;
 }
+
+// Black-76 on the forward (index options: carry and dividends are inside F).
+function b76d1(F, K, T, iv) {
+  return (Math.log(F / K) + (iv * iv * T) / 2) / (iv * Math.sqrt(T));
+}
+
+export function black76Price(F, K, T, iv, type, r = 0) {
+  const disc = Math.exp(-r * T);
+  if (!(T > 0 && iv > 0)) return disc * Math.max(0, type === 'call' ? F - K : K - F);
+  const d1 = b76d1(F, K, T, iv);
+  const d2 = d1 - iv * Math.sqrt(T);
+  return type === 'call' ? disc * (F * normCdf(d1) - K * normCdf(d2)) : disc * (K * normCdf(-d2) - F * normCdf(-d1));
+}
+
+export function black76Delta(F, K, T, iv, type, r = 0) {
+  if (!(T > 0 && iv > 0)) return 0;
+  const n = normCdf(b76d1(F, K, T, iv));
+  return Math.exp(-r * T) * (type === 'call' ? n : n - 1);
+}
+
+export function black76IV(price, F, K, T, type, r = 0) {
+  const intrinsic = Math.exp(-r * T) * Math.max(0, type === 'call' ? F - K : K - F);
+  if (!(price > intrinsic) || !(T > 0)) return NaN;
+  let lo = 0.005;
+  let hi = 5;
+  if (black76Price(F, K, T, hi, type, r) < price) return NaN;
+  for (let i = 0; i < 60; i++) {
+    const mid = (lo + hi) / 2;
+    if (black76Price(F, K, T, mid, type, r) > price) hi = mid;
+    else lo = mid;
+  }
+  return (lo + hi) / 2;
+}

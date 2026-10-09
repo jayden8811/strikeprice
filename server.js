@@ -6,6 +6,9 @@ import { analyze } from './src/engine/analyze.js';
 import { loadTicker } from './src/data/load.js';
 import { addPrints, getPrints, startPolling } from './src/data/flowStore.js';
 import * as massive from './src/data/massive.js';
+import { cycle, mode as condorMode, preview } from './src/condor/bot.js';
+import { readLog } from './src/condor/state.js';
+import { marketSession } from './src/engine/time.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const DEMO = process.env.DATA_SOURCE === 'demo';
@@ -40,6 +43,11 @@ const server = createServer(async (req, res) => {
       return send(res, 200, { ...analyze(data), sources: data.sources });
     }
 
+    if (url.pathname === '/api/condor') {
+      const [status, events] = await Promise.all([preview(), readLog(100)]);
+      return send(res, 200, { ...status, log: events.reverse() });
+    }
+
     if (url.pathname === '/api/flow' && req.method === 'POST') {
       if (FLOW_TOKEN && req.headers.authorization !== `Bearer ${FLOW_TOKEN}`) return send(res, 401, { error: 'Unauthorized' });
       const body = await readBody(req);
@@ -68,6 +76,15 @@ const server = createServer(async (req, res) => {
 
 if (process.env.FLOW_FEED_URL) startPolling(process.env.FLOW_FEED_URL);
 if (massive.enabled()) massive.start();
+
+// The condor bot runs inside the server when CONDOR_BOT=1, every CONDOR_INTERVAL minutes.
+if (process.env.CONDOR_BOT === '1') {
+  const minutes = Number(process.env.CONDOR_INTERVAL ?? 2);
+  const tick = () => marketSession() === 'open' && cycle().catch((e) => console.error(`condor: ${e.message}`));
+  tick();
+  setInterval(tick, minutes * 60_000);
+  console.log(`condor bot: ${condorMode()} mode, every ${minutes} min during market hours`);
+}
 
 server.listen(PORT, () => {
   console.log(`strikeprice on http://localhost:${PORT}${DEMO ? ' (demo data)' : ''}`);
